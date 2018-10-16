@@ -3,8 +3,9 @@
 #include <stdlib.h>
 #include <ucontext.h>
 #include <string.h>
+#include <time.h>
 
-#define n 2
+#define n 3
 
 static ucontext_t context_main;
 static ucontext_t contexts[n];
@@ -20,56 +21,83 @@ static int* int_file_array_size;
     }                                                     \
 }
 
-static void context_function(int left, int right, int ind) { //quick sort
-    int i = left, j = right;
-    context_swap(ind);
-    int tmp;
-    context_swap(ind);
-    int pivot = int_file_array[ind][(left + right) / 2];
-    context_swap(ind);
-    while (i <= j) {
-        context_swap(ind);
-        while (int_file_array[ind][i] < pivot) {
-            context_swap(ind);
-            i++;
-            context_swap(ind);
-        }
-        context_swap(ind);
-        while (int_file_array[ind][j] > pivot) {
-            context_swap(ind);
-            j--;
-            context_swap(ind);
-        }
-        context_swap(ind);
-        if (i <= j) {
-            context_swap(ind);
-            tmp = int_file_array[ind][i];
-            context_swap(ind);
-            int_file_array[ind][i] = int_file_array[ind][j];
-            context_swap(ind);
-            int_file_array[ind][j] = tmp;
-            context_swap(ind);
-            i++;
-            context_swap(ind);
-            j--;
-            context_swap(ind);
-        }
-        context_swap(ind);
-    };
+static void context_function(int l, int h, int ind) //iterative quick sort
+{
+    int stack[ h - l + 1 ];
     context_swap(ind);
 
-    if (left < j) {
+    int top = -1;
+    context_swap(ind);
+
+    stack[ ++top ] = l;
+    context_swap(ind);
+    stack[ ++top ] = h;
+    context_swap(ind);
+
+    while ( top >= 0 )
+    {
         context_swap(ind);
-        context_function(left, j, ind);
+        h = stack[ top-- ];
         context_swap(ind);
-    }
-    if (i < right) {
+        l = stack[ top-- ];
         context_swap(ind);
-        context_function(i, right, ind);
+
+        int p;
+        context_swap(ind);
+        int x = int_file_array[ind][h];
+        context_swap(ind);
+        int i = (l - 1);
+        context_swap(ind);
+
+        for (int j = l; j <= h - 1; j++)
+        {
+            context_swap(ind);
+            if (int_file_array[ind][j] <= x)
+            {
+                context_swap(ind);
+                i++;
+                context_swap(ind);
+                int t = int_file_array[ind][i];
+                context_swap(ind);
+                int_file_array[ind][i] = int_file_array[ind][j];
+                context_swap(ind);
+                int_file_array[ind][j] = t;
+                context_swap(ind);
+            }
+            context_swap(ind);
+        }
+        int t = int_file_array[ind][i + 1];
+        context_swap(ind);
+        int_file_array[ind][i + 1] = int_file_array[ind][h];
+        context_swap(ind);
+        int_file_array[ind][h] = t;
+        context_swap(ind);
+        p = i + 1;
+        context_swap(ind);
+
+        if ( p-1 > l )
+        {
+            context_swap(ind);
+            stack[ ++top ] = l;
+            context_swap(ind);
+            stack[ ++top ] = p - 1;
+            context_swap(ind);
+        }
+        context_swap(ind);
+
+        if ( p + 1 < h )
+        {
+            context_swap(ind);
+            stack[ ++top ] = p + 1;
+            context_swap(ind);
+            stack[ ++top ] = h;
+            context_swap(ind);
+        }
         context_swap(ind);
     }
     context_swap(ind);
 }
+
 
 void merge_arrays(int* arr1, int* arr2, int n1, int n2, int* arr3)
 {
@@ -95,12 +123,15 @@ void final_merge() {
     if (n > 2) {
         merged_arrays = (int**) malloc((n - 1) * sizeof(int *));
         int size = int_file_array_size[0] + int_file_array_size[1];
+        int size_before;
         merged_arrays[0] = (int*) malloc(size * sizeof(int));
         merge_arrays(int_file_array[0], int_file_array[1], int_file_array_size[0], int_file_array_size[1], merged_arrays[0]);
+
         for (int i = 2; i < n; i++) {
+            size_before = size;
             size += int_file_array_size[i];
             merged_arrays[i - 1] = (int*) malloc(size * sizeof(int));
-            merge_arrays(merged_arrays[i - 2], int_file_array[i], int_file_array_size[i - 2], int_file_array_size[i], merged_arrays[i - 1]);
+            merge_arrays(merged_arrays[i - 2], int_file_array[i], size_before, int_file_array_size[i], merged_arrays[i - 1]);
         }
         for (int i = 0; i < size; i++)
             fprintf(final_file, "%d ", merged_arrays[n - 2][i]);
@@ -180,7 +211,6 @@ int main() {
 
     for (int i = 0; i < n; i++) {
         parse_file(fin[i], i);                                //making arrays
-
         for (int j = 0; j < int_file_array_size[i]; j++) {    //checking
             printf("%d ", int_file_array[i][j]);
         }
