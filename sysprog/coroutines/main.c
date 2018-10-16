@@ -11,13 +11,13 @@ static ucontext_t contexts[n];
 static int** int_file_array;
 static int* int_file_array_size;
 
-#define context_swap(i) {                                \
-    if (((i) + 1) == n) {                                \
-        swapcontext(&contexts[(i)], &contexts[0]);       \
-    }                                                    \
-    else {                                               \
-        swapcontext(&contexts[(i)], &contexts[(i) + 1]); \
-    }                                                    \
+#define context_swap(i) {                                 \
+    if (((i) + 1) == n) {                                 \
+        swapcontext(&contexts[(i)], &contexts[0]);        \
+    }                                                     \
+    else {                                                \
+        swapcontext(&contexts[(i)], &contexts[(i) + 1]);  \
+    }                                                     \
 }
 
 static void context_function(int left, int right, int ind) { //quick sort
@@ -86,6 +86,44 @@ void merge_arrays(int* arr1, int* arr2, int n1, int n2, int* arr3)
         arr3[k++] = arr1[i++];
     while (j < n2)
         arr3[k++] = arr2[j++];
+}
+
+void final_merge() {
+    FILE* final_file = fopen("final", "w+");
+
+    int** merged_arrays;
+    if (n > 2) {
+        merged_arrays = (int**) malloc((n - 1) * sizeof(int *));
+        int size = int_file_array_size[0] + int_file_array_size[1];
+        merged_arrays[0] = (int*) malloc(size * sizeof(int));
+        merge_arrays(int_file_array[0], int_file_array[1], int_file_array_size[0], int_file_array_size[1], merged_arrays[0]);
+        for (int i = 2; i < n; i++) {
+            size += int_file_array_size[i];
+            merged_arrays[i - 1] = (int*) malloc(size * sizeof(int));
+            merge_arrays(merged_arrays[i - 2], int_file_array[i], int_file_array_size[i - 2], int_file_array_size[i], merged_arrays[i - 1]);
+        }
+        for (int i = 0; i < size; i++)
+            fprintf(final_file, "%d ", merged_arrays[n - 2][i]);
+    }
+    else {
+        merged_arrays = (int**) malloc(sizeof(int *));
+        int size = int_file_array_size[0] + int_file_array_size[1];
+        merged_arrays[0] = (int*) malloc(size * sizeof(int));
+        merge_arrays(int_file_array[0], int_file_array[1], int_file_array_size[0], int_file_array_size[1], merged_arrays[0]);
+        for (int i = 0; i < size; i++) {
+            fprintf(final_file, "%d ", merged_arrays[0][i]);
+        }
+    }
+
+    fclose(final_file);   //cleanup
+    if (n > 2) {
+        for (int i = 0; i < n - 1; i++) {
+            free(merged_arrays[i]);
+        }
+    }
+    else
+        free (merged_arrays[0]);
+    free(merged_arrays);
 }
 
 void parse_file(FILE* f, int i) {
@@ -161,31 +199,7 @@ int main() {
     printf("\n");
     }
 
-    FILE* final_file = fopen("final", "w+");
-
-    int** merged_arrays;
-    if (n > 2) {
-        merged_arrays = (int**) malloc((n - 1) * sizeof(int *));
-        int size = int_file_array_size[0] + int_file_array_size[1];
-        merged_arrays[0] = (int*) malloc(size * sizeof(int));
-        merge_arrays(int_file_array[0], int_file_array[1], int_file_array_size[0], int_file_array_size[1], merged_arrays[0]);
-        for (int i = 2; i < n; i++) {
-            size += int_file_array_size[i];
-            merged_arrays[i - 1] = (int*) malloc(size * sizeof(int));
-            merge_arrays(merged_arrays[i - 2], int_file_array[i], int_file_array_size[i - 2], int_file_array_size[i], merged_arrays[i - 1]);
-        }
-        for (int i = 0; i < size; i++)
-            fprintf(final_file, "%d ", merged_arrays[n - 2][i]);
-    }
-    else {
-        merged_arrays = (int**) malloc(sizeof(int *));
-        int size = int_file_array_size[0] + int_file_array_size[1];
-        merged_arrays[0] = (int*) malloc(size * sizeof(int));
-        merge_arrays(int_file_array[0], int_file_array[1], int_file_array_size[0], int_file_array_size[1], merged_arrays[0]);
-        for (int i = 0; i < size; i++) {
-            fprintf(final_file, "%d ", merged_arrays[0][i]);
-        }
-    }
+    final_merge();
 
     free(int_file_array_size);       //cleanup
     for (int i = 0; i < n; i++) {
@@ -193,15 +207,6 @@ int main() {
         fclose(fin[i]);
         fclose(fout[i]);
     }
-    fclose(final_file);
-    if (n > 2) {
-        for (int i = 0; i < n - 1; i++) {
-            free(merged_arrays[i]);
-        }
-    }
-    else
-        free (merged_arrays[0]);
-    free(merged_arrays);
     free(int_file_array);
     free(fin);
     free(fout);
