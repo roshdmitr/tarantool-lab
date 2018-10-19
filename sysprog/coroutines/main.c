@@ -1,15 +1,17 @@
 #define _XOPEN_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <ucontext.h>
+#include <signal.h>
 #include <string.h>
 #include <time.h>
-#include <signal.h>
 
 #define stack_size 131072
 
 static ucontext_t context_main;
 static ucontext_t* contexts;
+static bool* is_finished;
 static int** int_file_array;
 static int* int_file_array_size;
 static int n;
@@ -24,22 +26,18 @@ static int n;
         if (swapcontext(&contexts[(i)], &contexts[0]) == -1) {            \
             handle_error("swapcontext()");                                \
         }                                                                 \
-        else {                                                            \
-            printf("swapcontext(%d, 0) \n", (i));                         \
-        }                                                                 \
     }                                                                     \
     else {                                                                \
         if (swapcontext(&contexts[(i)], &contexts[(i) + 1]) == -1) {      \
             handle_error("swapcontext()");                                \
         }                                                                 \
-        else {                                                            \
-            printf("swapcontext(%d, %d) \n", (i), (i) + 1);               \
-        }                                                                 \
     }                                                                     \
 }                                                                         \
 
-static void context_function(int l, int h, int ind) //iterative quick sort
+static void context_function(int l, int h, int ind)            //iterative quick sort
 {
+    clock_t begin = clock();
+    context_swap(ind);
     int* stack = (int*) malloc((h - l + 1) * sizeof(int));
     context_swap(ind);
 
@@ -113,8 +111,26 @@ static void context_function(int l, int h, int ind) //iterative quick sort
         context_swap(ind);
     }
     context_swap(ind);
-    free(stack);
-    context_swap(ind);
+    is_finished[ind] = true;
+    clock_t end = clock();
+    printf("Time spent by %d coroutine: %fs.\n", ind + 1, ((float)(end - begin)) / CLOCKS_PER_SEC);
+    while (true)
+    {
+        bool all_finished = true;
+        for (int i = 0; i < n; i++)
+        {
+            if (!is_finished[i])
+            {
+                all_finished = false;
+                break;
+            }
+        }
+        if (all_finished) {
+            free(stack);
+            return;
+        }
+        context_swap(ind);
+    }
 }
 
 
@@ -182,8 +198,9 @@ void final_merge() {
             free(merged_arrays[i]);
         }
     }
-    else
-        free (merged_arrays[0]);
+    else {
+        free(merged_arrays[0]);
+    }
     free(merged_arrays);
 }
 
@@ -232,28 +249,37 @@ static char* allocate_stack()
 }
 
 int main(int argc, char* argv[]) {
-    if ((n = (int)strtol(argv[1], NULL, 10)) <= 0)
-        handle_error("strtol()");
-    printf("Enter %d file names:\n", n);
+    time_t begin = time(NULL);
+    n = argc - 1;
+    if (n == 1)
+    {
+        printf("You need more than 1 file! \n");
+        return -1;
+    }
+    else if (n <= 0)
+    {
+        printf("Enter a valid number of files! \n");
+        return -1;
+    }
+
     FILE** fin = (FILE**) malloc(n * sizeof(FILE*));    //array of all input files
-    FILE** fout = (FILE**) malloc(n * sizeof(FILE*));   //array for output files (sorted)
-    if (fin == NULL || fout == NULL)
+    if (fin == NULL)
         handle_error("fin/fout malloc()");
-    char s[100];
     for (int i = 0; i < n; i++) {
-        scanf("%s", s);
-        fin[i] = fopen(s, "r");
-        fout[i] = fopen(strcat(s, "_out"), "w+");
-        if (fin[i] == NULL || fout[i] == NULL)
+        fin[i] = fopen(argv[i + 1], "r");
+        if (fin[i] == NULL) {
             handle_error("fopen()");
+        }
     }
 
     contexts = (ucontext_t*) malloc(n * sizeof(ucontext_t));
+    is_finished = (bool*) malloc(n * sizeof(bool));
     if (contexts == NULL)
         handle_error("contexts malloc()")
     for (int i = 0; i < n; i++) {
         if (getcontext(&contexts[i]) == -1)
-            handle_error("getcontext()")
+            handle_error("getcontext()");
+        is_finished[i] = false;
         contexts[i].uc_stack.ss_sp = allocate_stack();
         contexts[i].uc_stack.ss_size = stack_size * sizeof(char);
         if (i == 0)
@@ -270,21 +296,10 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < n; i++) {
         parse_file(fin[i], i);
         makecontext(&contexts[i], context_function, 3, 0, int_file_array_size[i] - 1, i);
-        //context_function(0, int_file_array_size[i] - 1, i);    //check if comment all context_swap(ind)
     }
 
     if (swapcontext(&context_main, &contexts[n - 1]) == -1)
         handle_error("swapcontext() main to n - 1");
-
-
-    /*printf("\n");
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < int_file_array_size[i]; j++) {
-            fprintf(fout[i], "%d ", int_file_array[i][j]);
-            printf("%d ", int_file_array[i][j]);
-    }
-    printf("\n");
-    }*/
 
     final_merge();
 
@@ -292,11 +307,12 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < n; i++) {
         free(int_file_array[i]);
         fclose(fin[i]);
-        fclose(fout[i]);
     }
     free(contexts);
+    free(is_finished);
     free(int_file_array);
     free(fin);
-    free(fout);
+    time_t end = time(NULL);
+    printf("Time spent totally by the program: %fs.\n", difftime(end, begin));
     return 0;
 }
