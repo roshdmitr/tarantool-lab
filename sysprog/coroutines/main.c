@@ -4,26 +4,43 @@
 #include <ucontext.h>
 #include <string.h>
 #include <time.h>
+#include <signal.h>
 
-#define n 3
+#define stack_size 131072
 
 static ucontext_t context_main;
-static ucontext_t contexts[n];
+static ucontext_t* contexts;
 static int** int_file_array;
 static int* int_file_array_size;
+static int n;
 
-#define context_swap(i) {                                 \
-    if (((i) + 1) == n) {                                 \
-        swapcontext(&contexts[(i)], &contexts[0]);        \
-    }                                                     \
-    else {                                                \
-        swapcontext(&contexts[(i)], &contexts[(i) + 1]);  \
-    }                                                     \
+#define handle_error(msg) {                                               \
+   perror(msg);                                                           \
+   exit(EXIT_FAILURE);                                                    \
 }
+
+#define context_swap(i) {                                                 \
+    if (((i) + 1) == n) {                                                 \
+        if (swapcontext(&contexts[(i)], &contexts[0]) == -1) {            \
+            handle_error("swapcontext()");                                \
+        }                                                                 \
+        else {                                                            \
+            printf("swapcontext(%d, 0) \n", (i));                         \
+        }                                                                 \
+    }                                                                     \
+    else {                                                                \
+        if (swapcontext(&contexts[(i)], &contexts[(i) + 1]) == -1) {      \
+            handle_error("swapcontext()");                                \
+        }                                                                 \
+        else {                                                            \
+            printf("swapcontext(%d, %d) \n", (i), (i) + 1);               \
+        }                                                                 \
+    }                                                                     \
+}                                                                         \
 
 static void context_function(int l, int h, int ind) //iterative quick sort
 {
-    int stack[ h - l + 1 ];
+    int* stack = (int*) malloc((h - l + 1) * sizeof(int));
     context_swap(ind);
 
     int top = -1;
@@ -96,6 +113,8 @@ static void context_function(int l, int h, int ind) //iterative quick sort
         context_swap(ind);
     }
     context_swap(ind);
+    free(stack);
+    context_swap(ind);
 }
 
 
@@ -118,28 +137,39 @@ void merge_arrays(int* arr1, int* arr2, int n1, int n2, int* arr3)
 
 void final_merge() {
     FILE* final_file = fopen("final", "w+");
-
+    if (final_file == NULL)
+        handle_error("fopen()");
     int** merged_arrays;
     if (n > 2) {
         merged_arrays = (int**) malloc((n - 1) * sizeof(int *));
+        if (merged_arrays == NULL)
+            handle_error("merged_arrays malloc()");
         int size = int_file_array_size[0] + int_file_array_size[1];
         int size_before;
         merged_arrays[0] = (int*) malloc(size * sizeof(int));
+        if (merged_arrays[0] == NULL)
+            handle_error("merged_arrays[0] malloc");
         merge_arrays(int_file_array[0], int_file_array[1], int_file_array_size[0], int_file_array_size[1], merged_arrays[0]);
 
         for (int i = 2; i < n; i++) {
             size_before = size;
             size += int_file_array_size[i];
             merged_arrays[i - 1] = (int*) malloc(size * sizeof(int));
+            if (merged_arrays[i - 1] == NULL)
+                handle_error("merged_arrays[0] malloc()");
             merge_arrays(merged_arrays[i - 2], int_file_array[i], size_before, int_file_array_size[i], merged_arrays[i - 1]);
         }
         for (int i = 0; i < size; i++)
             fprintf(final_file, "%d ", merged_arrays[n - 2][i]);
     }
     else {
-        merged_arrays = (int**) malloc(sizeof(int *));
+        merged_arrays = (int**) malloc(sizeof(int*));
+        if (merged_arrays == NULL)
+            handle_error("merged_arrays malloc()");
         int size = int_file_array_size[0] + int_file_array_size[1];
         merged_arrays[0] = (int*) malloc(size * sizeof(int));
+        if (merged_arrays[0] == NULL)
+            handle_error("merged_arrays[0] malloc()");
         merge_arrays(int_file_array[0], int_file_array[1], int_file_array_size[0], int_file_array_size[1], merged_arrays[0]);
         for (int i = 0; i < size; i++) {
             fprintf(final_file, "%d ", merged_arrays[0][i]);
@@ -163,12 +193,16 @@ void parse_file(FILE* f, int i) {
     int j = 0, size = 1000;
     fscanf(f, "%d", &t);
     int_file_array[i] = (int*) malloc(1000 * sizeof(int));
+    if (int_file_array[i] == NULL)
+        handle_error("parse malloc()");
     int_file_array[i][j] = t;
     while (!feof(f)) {
         fscanf(f, "%d", &t);
         j++;
         if (j > size) {
             tmp = realloc(int_file_array[i], size * 2 * sizeof(int));
+            if (tmp == NULL)
+                handle_error("realloc()");
             size *= 2;
             int_file_array[i] = tmp;
             tmp = NULL;
@@ -176,58 +210,81 @@ void parse_file(FILE* f, int i) {
         int_file_array[i][j] = t;
     }
     tmp = realloc(int_file_array[i], j * sizeof(int));
+    if (tmp == NULL)
+        handle_error("realloc()");
     int_file_array[i] = tmp;
     tmp = NULL;
     int_file_array_size[i] = j;
 }
 
-int main() {
+static char* allocate_stack()
+{
+    char* stack = (char*) malloc(stack_size * sizeof(char));
+    if (stack == NULL)
+        handle_error("stack malloc()");
+    stack_t s;
+    s.ss_sp = stack;
+    s.ss_size = stack_size * sizeof(char);
+    s.ss_flags = 0;
+    if (sigaltstack(&s, NULL) == -1)
+        handle_error("sigaltstack()");
+    return stack;
+}
+
+int main(int argc, char* argv[]) {
+    if ((n = (int)strtol(argv[1], NULL, 10)) <= 0)
+        handle_error("strtol()");
     printf("Enter %d file names:\n", n);
-    FILE** fin = (FILE**) malloc(n * sizeof(FILE*)); //array of all input files
-    FILE** fout = (FILE**) malloc(n * sizeof(FILE*)); //array for output files (sorted)
+    FILE** fin = (FILE**) malloc(n * sizeof(FILE*));    //array of all input files
+    FILE** fout = (FILE**) malloc(n * sizeof(FILE*));   //array for output files (sorted)
+    if (fin == NULL || fout == NULL)
+        handle_error("fin/fout malloc()");
     char s[100];
     for (int i = 0; i < n; i++) {
         scanf("%s", s);
         fin[i] = fopen(s, "r");
         fout[i] = fopen(strcat(s, "_out"), "w+");
-        if (fin[i] == NULL || fout[i] == NULL) {
-            printf("error opening file");
-        }
+        if (fin[i] == NULL || fout[i] == NULL)
+            handle_error("fopen()");
     }
 
-    char stacks[n][1048576];
+    contexts = (ucontext_t*) malloc(n * sizeof(ucontext_t));
+    if (contexts == NULL)
+        handle_error("contexts malloc()")
     for (int i = 0; i < n; i++) {
-        getcontext(&contexts[i]);
-        contexts[i].uc_stack.ss_sp = stacks[i];
-        contexts[i].uc_stack.ss_size = sizeof(stacks[i]);
+        if (getcontext(&contexts[i]) == -1)
+            handle_error("getcontext()")
+        contexts[i].uc_stack.ss_sp = allocate_stack();
+        contexts[i].uc_stack.ss_size = stack_size * sizeof(char);
         if (i == 0)
             contexts[i].uc_link = &context_main;
         else
             contexts[i].uc_link = &contexts[i - 1];
     }
 
-    int_file_array = (int**) malloc(n * sizeof(int*));        //arrays of all numbers from all files
-    int_file_array_size = (int*) malloc(n * sizeof(int));     //all sizes of arrays
+    int_file_array = (int**) malloc(n * sizeof(int*));           //arrays of all numbers from all files
+    int_file_array_size = (int*) malloc(n * sizeof(int));        //all sizes of arrays
+    if (int_file_array == NULL || int_file_array_size == NULL)
+        handle_error("file array malloc()");
 
     for (int i = 0; i < n; i++) {
-        parse_file(fin[i], i);                                //making arrays
-        for (int j = 0; j < int_file_array_size[i]; j++) {    //checking
-            printf("%d ", int_file_array[i][j]);
-        }
-        printf("\n");
-
-        makecontext(&contexts[i], context_function, 3, 0, int_file_array_size[i] - 1, i); //associate co-routines with sorting
+        parse_file(fin[i], i);
+        makecontext(&contexts[i], context_function, 3, 0, int_file_array_size[i] - 1, i);
+        //context_function(0, int_file_array_size[i] - 1, i);    //check if comment all context_swap(ind)
     }
 
-    swapcontext(&context_main, &contexts[n - 1]);                                         //swapping to context
+    if (swapcontext(&context_main, &contexts[n - 1]) == -1)
+        handle_error("swapcontext() main to n - 1");
 
-    for (int i = 0; i < n; i++) {                                                         //checking the sort
+
+    /*printf("\n");
+    for (int i = 0; i < n; i++) {
         for (int j = 0; j < int_file_array_size[i]; j++) {
             fprintf(fout[i], "%d ", int_file_array[i][j]);
             printf("%d ", int_file_array[i][j]);
     }
     printf("\n");
-    }
+    }*/
 
     final_merge();
 
@@ -237,6 +294,7 @@ int main() {
         fclose(fin[i]);
         fclose(fout[i]);
     }
+    free(contexts);
     free(int_file_array);
     free(fin);
     free(fout);
