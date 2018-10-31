@@ -124,7 +124,7 @@ static void context_function(int l, int h, int ind)            //iterative quick
         p = i + 1;
         context_swap(ind, begin, end, sum);
 
-        if ( p-1 > l )
+        if ( p - 1 > l )
         {
             context_swap(ind, begin, end, sum);
             stack[ ++top ] = l;
@@ -146,6 +146,7 @@ static void context_function(int l, int h, int ind)            //iterative quick
     }
     context_swap(ind, begin, end, sum);
     is_finished[ind] = true;
+    free(stack);
     printf("Time elapsed by %d coroutine: %ld.%06lds.\n", ind, sum.tv_sec, sum.tv_usec);
     while (true)
     {
@@ -159,7 +160,6 @@ static void context_function(int l, int h, int ind)            //iterative quick
             }
         }
         if (all_finished) {
-            free(stack);
             return;
         }
         context_swap(ind, begin, end, sum);
@@ -185,7 +185,7 @@ void merge_arrays(int* arr1, int* arr2, int n1, int n2, int* arr3)
 }
 
 
-int* merge_two_arrays(FILE* final_file)
+int* merge_two_arrays()
 {
     int size = int_file_array_size[0] + int_file_array_size[1];
     int* merged_array = (int*) malloc(size * sizeof(int));
@@ -205,7 +205,7 @@ void final_merge() {
         check_malloc(merged_arrays);
         int size = int_file_array_size[0] + int_file_array_size[1];
         int size_before;
-        merged_arrays[0] = merge_two_arrays(final_file);
+        merged_arrays[0] = merge_two_arrays();
 
         for (int i = 2; i < n; i++) {
             size_before = size;
@@ -220,7 +220,7 @@ void final_merge() {
             fprintf(final_file, "%d ", merged_arrays[n - 2][i]);
     }
     else {
-        int* merged_array = merge_two_arrays(final_file);
+        int* merged_array = merge_two_arrays();
         int size = int_file_array_size[0] + int_file_array_size[1];
         for (int i = 0; i < size; i++) {
             fprintf(final_file, "%d ", merged_array[i]);
@@ -242,7 +242,7 @@ void parse_file(FILE* f, int i) {
     while (!feof(f)) {
         fscanf(f, "%d", &t);
         j++;
-        if (j > size) {
+        if (j >= size) {
             tmp = realloc(int_file_array[i], size * 2 * sizeof(int));
             check_realloc(tmp);
             size *= 2;
@@ -272,7 +272,7 @@ static char* allocate_stack()
 }
 
 int main(int argc, char* argv[]) {
-    struct timeval begin;
+    struct timeval begin, end;
     gettimeofday(&begin, NULL);
     n = argc - 1;
     if (n == 1)
@@ -331,7 +331,6 @@ int main(int argc, char* argv[]) {
     free(contexts);
     free(is_finished);
     free(fin);
-    struct timeval end;
     gettimeofday(&end, NULL);
     printf("Time elapsed by the whole program: %ld.%06lds.\n", end.tv_sec - begin.tv_sec, end.tv_usec - begin.tv_usec);
     return 0;
