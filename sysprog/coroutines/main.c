@@ -5,7 +5,7 @@
 #include <ucontext.h>
 #include <signal.h>
 #include <string.h>
-#include <time.h>
+#include <sys/time.h>
 
 #define stack_size 131072
 
@@ -45,101 +45,108 @@ static int n;
     }                                                                     \
 }
 
-#define context_swap(i) {                                                 \
+#define context_swap(i, begin, end, sum) {                                \
+    gettimeofday(&(end), NULL);                                           \
+    (sum).tv_sec += (end).tv_sec - (begin).tv_sec;                        \
+    (sum).tv_usec += (end).tv_usec - (begin).tv_usec;                     \
     if (((i) + 1) == n) {                                                 \
         if (swapcontext(&contexts[(i)], &contexts[0]) == -1) {            \
             handle_error("swapcontext()");                                \
         }                                                                 \
+        gettimeofday(&(begin), NULL);                                     \
     }                                                                     \
     else {                                                                \
         if (swapcontext(&contexts[(i)], &contexts[(i) + 1]) == -1) {      \
             handle_error("swapcontext()");                                \
         }                                                                 \
+        gettimeofday(&(begin), NULL);                                     \
     }                                                                     \
 }                                                                         \
 
 static void context_function(int l, int h, int ind)            //iterative quick sort
 {
-    clock_t begin = clock();
-    context_swap(ind);
+    struct timeval begin, end, sum;
+    gettimeofday(&begin, NULL);
+    sum.tv_sec = 0;
+    sum.tv_usec = 0;
+    context_swap(ind, begin, end, sum);
     int* stack = (int*) malloc((h - l + 1) * sizeof(int));
-    context_swap(ind);
+    context_swap(ind, begin, end, sum);
     check_malloc(stack);
-    context_swap(ind);
+    context_swap(ind, begin, end, sum);
 
     int top = -1;
-    context_swap(ind);
+    context_swap(ind, begin, end, sum);
 
     stack[ ++top ] = l;
-    context_swap(ind);
+    context_swap(ind, begin, end, sum);
     stack[ ++top ] = h;
-    context_swap(ind);
+    context_swap(ind, begin, end, sum);
 
     while ( top >= 0 )
     {
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
         h = stack[ top-- ];
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
         l = stack[ top-- ];
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
 
         int p;
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
         int x = int_file_array[ind][h];
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
         int i = (l - 1);
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
 
         for (int j = l; j <= h - 1; j++)
         {
-            context_swap(ind);
+            context_swap(ind, begin, end, sum);
             if (int_file_array[ind][j] <= x)
             {
-                context_swap(ind);
+                context_swap(ind, begin, end, sum);
                 i++;
-                context_swap(ind);
+                context_swap(ind, begin, end, sum);
                 int t = int_file_array[ind][i];
-                context_swap(ind);
+                context_swap(ind, begin, end, sum);
                 int_file_array[ind][i] = int_file_array[ind][j];
-                context_swap(ind);
+                context_swap(ind, begin, end, sum);
                 int_file_array[ind][j] = t;
-                context_swap(ind);
+                context_swap(ind, begin, end, sum);
             }
-            context_swap(ind);
+            context_swap(ind, begin, end, sum);
         }
         int t = int_file_array[ind][i + 1];
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
         int_file_array[ind][i + 1] = int_file_array[ind][h];
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
         int_file_array[ind][h] = t;
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
         p = i + 1;
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
 
         if ( p-1 > l )
         {
-            context_swap(ind);
+            context_swap(ind, begin, end, sum);
             stack[ ++top ] = l;
-            context_swap(ind);
+            context_swap(ind, begin, end, sum);
             stack[ ++top ] = p - 1;
-            context_swap(ind);
+            context_swap(ind, begin, end, sum);
         }
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
 
         if ( p + 1 < h )
         {
-            context_swap(ind);
+            context_swap(ind, begin, end, sum);
             stack[ ++top ] = p + 1;
-            context_swap(ind);
+            context_swap(ind, begin, end, sum);
             stack[ ++top ] = h;
-            context_swap(ind);
+            context_swap(ind, begin, end, sum);
         }
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
     }
-    context_swap(ind);
+    context_swap(ind, begin, end, sum);
     is_finished[ind] = true;
-    clock_t end = clock();
-    printf("Time spent by %d coroutine: %fs.\n", ind + 1, ((float)(end - begin)) / CLOCKS_PER_SEC);
+    printf("Time elapsed by %d coroutine: %ld.%06lds.\n", ind, sum.tv_sec, sum.tv_usec);
     while (true)
     {
         bool all_finished = true;
@@ -155,7 +162,7 @@ static void context_function(int l, int h, int ind)            //iterative quick
             free(stack);
             return;
         }
-        context_swap(ind);
+        context_swap(ind, begin, end, sum);
     }
 }
 
@@ -177,6 +184,18 @@ void merge_arrays(int* arr1, int* arr2, int n1, int n2, int* arr3)
         arr3[k++] = arr2[j++];
 }
 
+
+int* merge_two_arrays(FILE* final_file)
+{
+    int size = int_file_array_size[0] + int_file_array_size[1];
+    int* merged_array = (int*) malloc(size * sizeof(int));
+    check_malloc(merged_array);
+    merge_arrays(int_file_array[0], int_file_array[1], int_file_array_size[0], int_file_array_size[1], merged_array);
+    free(int_file_array[0]);
+    free(int_file_array[1]);
+    return merged_array;
+}
+
 void final_merge() {
     FILE* final_file = fopen("final", "w+");
     check_fopen(final_file);
@@ -186,9 +205,7 @@ void final_merge() {
         check_malloc(merged_arrays);
         int size = int_file_array_size[0] + int_file_array_size[1];
         int size_before;
-        merged_arrays[0] = (int*) malloc(size * sizeof(int));
-        check_malloc(merged_arrays[0]);
-        merge_arrays(int_file_array[0], int_file_array[1], int_file_array_size[0], int_file_array_size[1], merged_arrays[0]);
+        merged_arrays[0] = merge_two_arrays(final_file);
 
         for (int i = 2; i < n; i++) {
             size_before = size;
@@ -196,32 +213,22 @@ void final_merge() {
             merged_arrays[i - 1] = (int*) malloc(size * sizeof(int));
             check_malloc(merged_arrays[i - 1]);
             merge_arrays(merged_arrays[i - 2], int_file_array[i], size_before, int_file_array_size[i], merged_arrays[i - 1]);
+            free(int_file_array[i]);
+            free(merged_arrays[i - 2]);
         }
         for (int i = 0; i < size; i++)
             fprintf(final_file, "%d ", merged_arrays[n - 2][i]);
     }
     else {
-        merged_arrays = (int**) malloc(sizeof(int*));
-        check_malloc(merged_arrays);
+        int* merged_array = merge_two_arrays(final_file);
         int size = int_file_array_size[0] + int_file_array_size[1];
-        merged_arrays[0] = (int*) malloc(size * sizeof(int));
-        check_malloc(merged_arrays[0]);
-        merge_arrays(int_file_array[0], int_file_array[1], int_file_array_size[0], int_file_array_size[1], merged_arrays[0]);
         for (int i = 0; i < size; i++) {
-            fprintf(final_file, "%d ", merged_arrays[0][i]);
+            fprintf(final_file, "%d ", merged_array[i]);
         }
+        free(merged_array);
     }
 
     check_fclose(fclose(final_file));
-    if (n > 2) {
-        for (int i = 0; i < n - 1; i++) {
-            free(merged_arrays[i]);
-        }
-    }
-    else {
-        free(merged_arrays[0]);
-    }
-    free(merged_arrays);
 }
 
 void parse_file(FILE* f, int i) {
@@ -265,7 +272,8 @@ static char* allocate_stack()
 }
 
 int main(int argc, char* argv[]) {
-    time_t begin = time(NULL);
+    struct timeval begin;
+    gettimeofday(&begin, NULL);
     n = argc - 1;
     if (n == 1)
     {
@@ -316,16 +324,15 @@ int main(int argc, char* argv[]) {
 
     final_merge();
 
-    free(int_file_array_size);       //cleanup
     for (int i = 0; i < n; i++) {
-        free(int_file_array[i]);
         check_fclose(fclose(fin[i]));
     }
+    free(int_file_array_size);
     free(contexts);
     free(is_finished);
-    free(int_file_array);
     free(fin);
-    time_t end = time(NULL);
-    printf("Time spent totally by the program: %fs.\n", difftime(end, begin));
+    struct timeval end;
+    gettimeofday(&end, NULL);
+    printf("Time elapsed by the whole program: %ld.%06lds.\n", end.tv_sec - begin.tv_sec, end.tv_usec - begin.tv_usec);
     return 0;
 }
